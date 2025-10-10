@@ -8,7 +8,7 @@ from frappe.utils.background_jobs import get_jobs
 
 class StreamUpdateLog(Document):
 	def after_insert(self):
-		"""Send update notification updates to event consumers
+		"""Send update notification updates to Stream consumers
 		whenever update log is generated"""
 		enqueued_method = (
 			"stream_sync.stream_sync.doctype.stream_consumer.stream_consumer.notify_stream_consumers"
@@ -19,38 +19,39 @@ class StreamUpdateLog(Document):
 				enqueued_method, doctype=self.ref_doctype, queue="long", enqueue_after_commit=True
 			)
 
-ENABLED_DOCTYPES_CACHE_KEY = "stream_sync_enabled_doctypes"
 
 def notify_consumers(doc, event):
 	"""called via hooks"""
-	# make Stream update log for doctypes having event consumers
+	# make Stream update log for doctypes having Stream consumers
 	if frappe.flags.in_install or frappe.flags.in_migrate:
 		return
 
 	consumers = check_doctype_has_consumers(doc.doctype)
 	if consumers:
 		if event == "after_insert":
-			doc.flags.event_update_log = make_stream_update_log(doc, update_type="Create")
+			doc.flags.stream_update_log = make_stream_update_log(doc, update_type="Create")
 		elif event == "on_trash":
 			make_stream_update_log(doc, update_type="Delete")
 		else:
 			# on_update
 			# called after saving
-			if not doc.flags.event_update_log:  # if not already inserted
+			if not doc.flags.stream_update_log:  # if not already inserted
 				diff = get_update(doc.get_doc_before_save(), doc)
 				if diff:
 					doc.diff = diff
 					make_stream_update_log(doc, update_type="Update")
 
+ENABLED_DOCTYPES_CACHE_KEY = "stream_sync_enabled_doctypes"
+
 def check_doctype_has_consumers(doctype: str) -> bool:
-	"""Check if doctype has stream consumers for streaming"""
+	"""Check if doctype has Stream consumers for event streaming"""
 	def fetch_from_db():
 		return frappe.get_all(
 			"Stream Consumer Doctype",
 			filters={"ref_doctype": doctype, "status": "Actived", "unsubscribe": 0, "stream_type": "Event"},
 			ignore_ddl=True,
 		)
-	
+
 	return bool(frappe.cache().hget(ENABLED_DOCTYPES_CACHE_KEY, doctype, fetch_from_db))
 
 
@@ -95,7 +96,7 @@ def get_update(old, new, for_child=False):
 
 
 def make_stream_update_log(doc, update_type):
-	"""Save update info for doctypes that have event consumers"""
+	"""Save update info for doctypes that have Stream consumers"""
 	if update_type != "Delete":
 		# diff for update type, doc for create type
 		data = frappe.as_json(doc) if not doc.get("diff") else frappe.as_json(doc.diff)
@@ -263,7 +264,7 @@ def get_update_logs_for_consumer(stream_consumer, doctypes, last_update):
 
 	from stream_sync.stream_sync.doctype.stream_consumer.stream_consumer import has_consumer_access
 
-	consumer = frappe.get_doc("Event Consumer", stream_consumer)
+	consumer = frappe.get_doc("Stream Consumer", stream_consumer)
 	docs = frappe.get_list(
 		doctype="Stream Update Log",
 		filters={"ref_doctype": ("in", doctypes), "creation": (">", last_update)},

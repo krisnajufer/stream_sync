@@ -28,6 +28,14 @@ class StreamProducer(Document):
 			for entry in self.producer_doctypes:
 				entry.status = "Actived"
 
+	def validate_stream_subscriber(self):
+		if not frappe.db.get_value("User", self.user, "api_key"):
+			frappe.throw(
+				_("Please generate keys for the Stream Subscriber User {0} first.").format(
+					frappe.bold(get_link_to_form("User", self.user))
+				)
+			)
+
 	def on_update(self):
 		if not self.incoming_change:
 			if frappe.db.exists("Stream Producer", self.name):
@@ -50,14 +58,6 @@ class StreamProducer(Document):
 		if last_update:
 			frappe.delete_doc("Stream Producer Last Update", last_update)
 
-	def validate_stream_subscriber(self):
-		if not frappe.db.get_value("User", self.user, "api_key"):
-			frappe.throw(
-				_("Please generate keys for the Stream Subscriber User {0} first.").format(
-					frappe.bold(get_link_to_form("User", self.user))
-				)
-			)
-
 	def check_url(self):
 		valid_url_schemes = ("http", "https")
 		frappe.utils.validate_url(self.producer_url, throw=True, valid_schemes=valid_url_schemes)
@@ -67,19 +67,8 @@ class StreamProducer(Document):
 		if self.producer_url.endswith("/"):
 			self.producer_url = self.producer_url[:-1]
 
-	def is_producer_online(self):
-		"""check connection status for the Stream Producer site"""
-		retry = 3
-		while retry > 0:
-			res = requests.get(self.producer_url)
-			if res.status_code == 200:
-				return True
-			retry -= 1
-			time.sleep(5)
-		frappe.throw(_("Failed to connect to the Stream Producer site. Retry after some time."))
-
 	def create_stream_consumer(self):
-		"""register stream consumer on the producer site"""
+		"""register Stream consumer on the producer site"""
 		if self.is_producer_online():
 			producer_site = FrappeClient(
 				url=self.producer_url, api_key=self.api_key, api_secret=self.get_password("api_secret")
@@ -98,7 +87,57 @@ class StreamProducer(Document):
 						"Failed to create an Stream Consumer or an Stream Consumer for the current site is already registered."
 					)
 				)
-    
+
+	def set_last_update(self, last_update):
+		last_update_doc_name = frappe.db.get_value(
+			"Stream Producer Last Update", dict(stream_producer=self.name)
+		)
+		if not last_update_doc_name:
+			frappe.get_doc(
+				dict(
+					doctype="Stream Producer Last Update",
+					stream_producer=self.producer_url,
+					last_update=last_update,
+				)
+			).insert(ignore_permissions=True)
+		else:
+			frappe.db.set_value(
+				"Stream Producer Last Update", last_update_doc_name, "last_update", last_update
+			)
+
+	def get_last_update(self):
+		return frappe.db.get_value(
+			"Stream Producer Last Update", dict(stream_producer=self.name), "last_update"
+		)
+
+	def get_request_data(self):
+		consumer_doctypes = []
+		for entry in self.producer_doctypes:
+			if entry.has_mapping:
+				# if mapping, subscribe to remote doctype on consumer's site
+				dt = frappe.db.get_value("Doctype Mapping", entry.mapping, "remote_doctype")
+			else:
+				dt = entry.ref_doctype
+			consumer_doctypes.append({
+				"doctype": dt, 
+				"condition": entry.condition,
+				"stream_type": entry.stream_type,
+				"target_docstatus": entry.target_docstatus,
+				"amend_mode": entry.amend_mode,
+				"unsubscribe": entry.unsubscribe,
+				"inherit_condition": entry.inherit_condition,
+			})	
+
+		user_key = frappe.db.get_value("User", self.user, "api_key")
+		user_secret = get_decrypted_password("User", self.user, "api_secret")
+		return {
+			"stream_consumer": get_url(),
+			"consumer_doctypes": json.dumps(consumer_doctypes),
+			"user": self.user,
+			"api_key": user_key,
+			"api_secret": user_secret,
+		}
+
 	def create_custom_fields(self):
 		"""create custom field to store remote docname and remote site url"""
 		for entry in self.producer_doctypes:
@@ -126,57 +165,6 @@ class StreamProducer(Document):
 					)
 					create_custom_field(entry.ref_doctype, df)
 
-	def get_request_data(self):
-		consumer_doctypes = []
-		for entry in self.producer_doctypes:
-			# if entry.has_mapping:
-			# 	# if mapping, subscribe to remote doctype on consumer's site
-			# 	dt = frappe.db.get_value("Document Type Mapping", entry.mapping, "remote_doctype")
-			# else:
-			# 	dt = entry.ref_doctype
-			dt = entry.ref_doctype
-			values = {
-				"doctype": dt, 
-				"condition": entry.condition,
-				"stream_type": entry.stream_type,
-				"amend_mode": entry.amend_mode,
-				"target_docstatus": entry.target_docstatus,
-				"inherit_condition": entry.inherit_condition
-			}
-			consumer_doctypes.append(values)
-
-		user_key = frappe.db.get_value("User", self.user, "api_key")
-		user_secret = get_decrypted_password("User", self.user, "api_secret")
-		return {
-			"stream_consumer": get_url(),
-			"consumer_doctypes": json.dumps(consumer_doctypes),
-			"user": self.user,
-			"api_key": user_key,
-			"api_secret": user_secret,
-		}
-
-	def get_last_update(self):
-		return frappe.db.get_value(
-			"Stream Producer Last Update", dict(stream_producer=self.name), "last_update"
-		)
-
-	def set_last_update(self, last_update):
-		last_update_doc_name = frappe.db.get_value(
-			"Stream Producer Last Update", dict(stream_producer=self.name)
-		)
-		if not last_update_doc_name:
-			frappe.get_doc(
-				dict(
-					doctype="Stream Producer Last Update",
-					stream_producer=self.producer_url,
-					last_update=last_update,
-				)
-			).insert(ignore_permissions=True)
-		else:
-			frappe.db.set_value(
-				"Stream Producer Last Update", last_update_doc_name, "last_update", last_update
-			)
-	
 	def update_stream_consumer(self):
 		if self.is_producer_online():
 			producer_site = get_producer_site(self.producer_url)
@@ -186,29 +174,42 @@ class StreamProducer(Document):
 				config = stream_consumer.consumer_doctypes
 				stream_consumer.consumer_doctypes = []
 				for entry in self.producer_doctypes:
-					# if entry.has_mapping:
-					# 	# if mapping, subscribe to remote doctype on consumer's site
-					# 	ref_doctype = frappe.db.get_value("Document Type Mapping", entry.mapping, "remote_doctype")
-					# else:
-					# 	ref_doctype = entry.ref_doctype
-					ref_doctype = entry.ref_doctype
+					if entry.has_mapping:
+						# if mapping, subscribe to remote doctype on consumer's site
+						ref_doctype = frappe.db.get_value("Doctype Mapping", entry.mapping, "remote_doctype")
+					else:
+						ref_doctype = entry.ref_doctype
 
 					stream_consumer.consumer_doctypes.append(
 						{
 							"ref_doctype": ref_doctype,
 							"status": get_approval_status(config, ref_doctype),
-							"unsubscribed": entry.unsubscribe,
+							"unsubscribe": entry.unsubscribe,
 							"condition": entry.condition,
 							"stream_type": entry.stream_type,
 							"amend_mode": entry.amend_mode,
+							"target_docstatus": entry.target_docstatus,
+							"inherit_condition": entry.inherit_condition,
 						}
 					)
 				stream_consumer.user = self.user
 				stream_consumer.incoming_change = True
 				producer_site.update(stream_consumer)
 
+	def is_producer_online(self):
+		"""check connection status for the Stream Producer site"""
+		retry = 3
+		while retry > 0:
+			res = requests.get(self.producer_url)
+			if res.status_code == 200:
+				return True
+			retry -= 1
+			time.sleep(5)
+		frappe.throw(_("Failed to connect to the Stream Producer site. Retry after some time."))
+
+
 def get_producer_site(producer_url):
-	"""create a FrappeClient object for stream producer site"""
+	"""create a FrappeClient object for Stream producer site"""
 	producer_doc = frappe.get_doc("Stream Producer", producer_url)
 	producer_site = FrappeClient(
 		url=producer_url,
@@ -219,11 +220,12 @@ def get_producer_site(producer_url):
 
 
 def get_approval_status(config, ref_doctype):
-	"""check the status for consumption"""
+	"""check the approval status for consumption"""
 	for entry in config:
 		if entry.get("ref_doctype") == ref_doctype:
 			return entry.get("status")
 	return "Pending"
+
 
 @frappe.whitelist()
 def pull_producer_data():
@@ -238,7 +240,7 @@ def pull_producer_data():
 
 @frappe.whitelist()
 def pull_from_node(stream_producer):
-	"""pull all updates after the last update timestamp from stream producer site"""
+	"""pull all updates after the last update timestamp from Stream producer site"""
 	stream_producer = frappe.get_doc("Stream Producer", stream_producer)
 	producer_site = get_producer_site(stream_producer.producer_url)
 	last_update = stream_producer.get_last_update()
@@ -249,10 +251,10 @@ def pull_from_node(stream_producer):
 
 	for update in updates:
 		update.use_same_name = naming_config.get(update.ref_doctype)
-		# mapping = mapping_config.get(update.ref_doctype)
-		# if mapping:
-		# 	update.mapping = mapping
-		# 	update = get_mapped_update(update, producer_site)
+		mapping = mapping_config.get(update.ref_doctype)
+		if mapping:
+			update.mapping = mapping
+			update = get_mapped_update(update, producer_site)
 		if not update.update_type == "Delete":
 			update.data = json.loads(update.data)
 
@@ -265,18 +267,16 @@ def get_config(stream_config):
 
 	for entry in stream_config:
 		if entry.status == "Actived":
-			# if entry.has_mapping:
-			# 	(mapped_doctype, mapping) = frappe.db.get_value(
-			# 		"Document Type Mapping", entry.mapping, ["remote_doctype", "name"]
-			# 	)
-			# 	mapping_config[mapped_doctype] = mapping
-			# 	naming_config[mapped_doctype] = entry.use_same_name
-			# 	doctypes.append(mapped_doctype)
-			# else:
-			# 	naming_config[entry.ref_doctype] = entry.use_same_name
-			# 	doctypes.append(entry.ref_doctype)
-			naming_config[entry.ref_doctype] = entry.use_same_name
-			doctypes.append(entry.ref_doctype)
+			if entry.has_mapping:
+				(mapped_doctype, mapping) = frappe.db.get_value(
+					"Doctype Mapping", entry.mapping, ["remote_doctype", "name"]
+				)
+				mapping_config[mapped_doctype] = mapping
+				naming_config[mapped_doctype] = entry.use_same_name
+				doctypes.append(mapped_doctype)
+			else:
+				naming_config[entry.ref_doctype] = entry.use_same_name
+				doctypes.append(entry.ref_doctype)
 	return (doctypes, mapping_config, naming_config)
 
 
@@ -311,19 +311,18 @@ def set_insert(update, producer_site, stream_producer):
 		return
 	doc = frappe.get_doc(update.data)
 
-	# if update.mapping:
-	# 	if update.get("dependencies"):
-	# 		dependencies_created = sync_mapped_dependencies(update.dependencies, producer_site)
-	# 		for fieldname, value in dependencies_created.items():
-	# 			doc.update({fieldname: value})
-	# else:
-	# 	sync_dependencies(doc, producer_site)
-	sync_dependencies(doc, producer_site)
+	if update.mapping:
+		if update.get("dependencies"):
+			dependencies_created = sync_mapped_dependencies(update.dependencies, producer_site)
+			for fieldname, value in dependencies_created.items():
+				doc.update({fieldname: value})
+	else:
+		sync_dependencies(doc, producer_site)
 
 	if update.use_same_name:
 		doc.insert(set_name=update.docname, set_child_names=False)
 	else:
-		# if event consumer is not saving documents with the same name as the producer
+		# if Stream consumer is not saving documents with the same name as the producer
 		# store the remote docname in a custom field for future updates
 		doc.remote_docname = update.docname
 		doc.remote_site_name = stream_producer
@@ -345,15 +344,13 @@ def set_update(update, producer_site):
 		if data.added:
 			local_doc = update_row_added(local_doc, data.added)
 
-		# if update.mapping:
-		# 	if update.get("dependencies"):
-		# 		dependencies_created = sync_mapped_dependencies(update.dependencies, producer_site)
-		# 		for fieldname, value in dependencies_created.items():
-		# 			local_doc.update({fieldname: value})
-		# else:
-		# 	sync_dependencies(local_doc, producer_site)
-
-		sync_dependencies(local_doc, producer_site)
+		if update.mapping:
+			if update.get("dependencies"):
+				dependencies_created = sync_mapped_dependencies(update.dependencies, producer_site)
+				for fieldname, value in dependencies_created.items():
+					local_doc.update({fieldname: value})
+		else:
+			sync_dependencies(local_doc, producer_site)
 
 		local_doc.save()
 		local_doc.db_update_all()
@@ -534,7 +531,7 @@ def log_stream_sync(update, stream_producer, sync_status, error=None):
 	doc.producer_doc = update.docname
 	doc.data = frappe.as_json(update.data)
 	doc.use_same_name = update.use_same_name
-	# doc.mapping = update.mapping if update.mapping else None
+	doc.mapping = update.mapping if update.mapping else None
 	if update.use_same_name:
 		doc.docname = update.docname
 	else:
@@ -546,7 +543,7 @@ def log_stream_sync(update, stream_producer, sync_status, error=None):
 
 def get_mapped_update(update, producer_site):
 	"""get the new update document with mapped fields"""
-	mapping = frappe.get_doc("Document Type Mapping", update.mapping)
+	mapping = frappe.get_doc("Doctype Mapping", update.mapping)
 	if update.update_type == "Create":
 		doc = frappe._dict(json.loads(update.data))
 		mapped_update = mapping.get_mapping(doc, producer_site, update.update_type)
@@ -576,7 +573,7 @@ def resync(update):
 	update = frappe._dict(json.loads(update))
 	producer_site = get_producer_site(update.stream_producer)
 	stream_producer = frappe.get_doc("Stream Producer", update.stream_producer)
-	# if update.mapping:
-	# 	update = get_mapped_update(update, producer_site)
-	# 	update.data = json.loads(update.data)
+	if update.mapping:
+		update = get_mapped_update(update, producer_site)
+		update.data = json.loads(update.data)
 	return sync(update, producer_site, stream_producer, in_retry=True)

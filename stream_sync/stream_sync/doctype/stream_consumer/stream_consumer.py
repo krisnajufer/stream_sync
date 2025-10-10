@@ -50,13 +50,12 @@ class StreamConsumer(Document):
 		config = stream_producer.producer_doctypes
 		stream_producer.producer_doctypes = []
 		for entry in config:
-			# if entry.get("has_mapping"):
-			# 	ref_doctype = consumer_site.get_value(
-			# 		"Document Type Mapping", "remote_doctype", entry.get("mapping")
-			# 	).get("remote_doctype")
-			# else:
-			# 	ref_doctype = entry.get("ref_doctype")
-			ref_doctype = entry.get("ref_doctype")
+			if entry.get("has_mapping"):
+				ref_doctype = consumer_site.get_value(
+					"Doctype Mapping", "remote_doctype", entry.get("mapping")
+				).get("remote_doctype")
+			else:
+				ref_doctype = entry.get("ref_doctype")
 
 			entry["status"] = frappe.db.get_value(
 				"Stream Consumer Doctype", {"parent": self.name, "ref_doctype": ref_doctype}, "status"
@@ -66,7 +65,6 @@ class StreamConsumer(Document):
 		# when producer doc is updated it updates the consumer doc
 		# set flag to avoid deadlock
 		stream_producer.incoming_change = True
-		
 		consumer_site.update(stream_producer)
 
 	def get_consumer_status(self):
@@ -75,14 +73,6 @@ class StreamConsumer(Document):
 			return "offline"
 		return "online"
 
-def get_last_update():
-	"""get the creation timestamp of last update consumed"""
-	updates = frappe.get_list(
-		"Stream Update Log", "creation", ignore_permissions=True, limit=1, order_by="creation desc"
-	)
-	if updates:
-		return updates[0].creation
-	return frappe.utils.now_datetime()
 
 @frappe.whitelist()
 def register_consumer(data):
@@ -114,8 +104,10 @@ def register_consumer(data):
 				"ref_doctype": entry.get("doctype"), 
 				"status": "Pending", 
 				"condition": entry.get("condition"),
+				"unsubscribe": entry.get("unsubscribe"),
 				"stream_type": entry.get("stream_type"),
 				"amend_mode": entry.get("amend_mode"),
+				"target_docstatus": entry.get("target_docstatus"),
 				"inherit_condition": entry.get("inherit_condition"),
 			},
 		)
@@ -128,8 +120,9 @@ def register_consumer(data):
 	last_update = str(get_last_update())
 	return json.dumps({"last_update": last_update})
 
+
 def get_consumer_site(consumer_url):
-	"""create a FrappeClient object for stream consumer site"""
+	"""create a FrappeClient object for Stream consumer site"""
 	consumer_doc = frappe.get_doc("Stream Consumer", consumer_url)
 	consumer_site = FrappeClient(
 		url=consumer_url,
@@ -137,6 +130,17 @@ def get_consumer_site(consumer_url):
 		api_secret=consumer_doc.get_password("api_secret"),
 	)
 	return consumer_site
+
+
+def get_last_update():
+	"""get the creation timestamp of last update consumed"""
+	updates = frappe.get_list(
+		"Stream Update Log", "creation", ignore_permissions=True, limit=1, order_by="creation desc"
+	)
+	if updates:
+		return updates[0].creation
+	return frappe.utils.now_datetime()
+
 
 @frappe.whitelist()
 def notify_stream_consumers(doctype):
