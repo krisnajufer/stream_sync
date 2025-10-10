@@ -11,7 +11,8 @@
   "api_key",
   "api_secret",
   "column_break_dgrh",
-  "user"
+  "user",
+  "incoming_change"
  ],
  "fields": [
   {
@@ -55,14 +56,22 @@
    "fieldtype": "Link",
    "label": "Stream Subscriber",
    "options": "User",
+   "read_only": 1,
    "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "incoming_change",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Incoming Change"
   }
  ],
  "grid_page_length": 50,
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-10-09 22:16:49.040169",
+ "modified": "2025-10-10 14:15:54.749177",
  "modified_by": "Administrator",
  "module": "Stream Sync",
  "name": "Stream Consumer",

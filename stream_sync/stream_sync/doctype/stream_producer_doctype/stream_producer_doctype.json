@@ -11,7 +11,10 @@
   "use_same_name",
   "unsubscribe",
   "stream_type",
-  "condition"
+  "amend_mode",
+  "target_docstatus",
+  "condition",
+  "inherit_condition"
  ],
  "fields": [
   {
@@ -57,13 +60,33 @@
    "label": "Stream Type",
    "options": "\nEvent\nManual",
    "reqd": 1
+  },
+  {
+   "fieldname": "amend_mode",
+   "fieldtype": "Select",
+   "label": "Amend Mode",
+   "options": "\nCreate New\nUpdate Source",
+   "reqd": 1
+  },
+  {
+   "fieldname": "target_docstatus",
+   "fieldtype": "Select",
+   "label": "Target Docstatus",
+   "options": "Follow Source\nDraft\nSubmitted\nCancelled",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "inherit_condition",
+   "fieldtype": "Check",
+   "label": "Inherit Condition"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2025-10-09 22:05:40.375301",
+ "modified": "2025-10-10 13:27:18.649619",
  "modified_by": "Administrator",
  "module": "Stream Sync",
  "name": "Stream Producer Doctype",

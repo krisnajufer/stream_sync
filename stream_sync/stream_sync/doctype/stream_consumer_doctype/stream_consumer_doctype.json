@@ -10,7 +10,10 @@
   "status",
   "unsubscribe",
   "stream_type",
-  "condition"
+  "amend_mode",
+  "target_docstatus",
+  "condition",
+  "inherit_condition"
  ],
  "fields": [
   {
@@ -30,14 +33,6 @@
    "options": "Pending\nActived\nSuspend"
   },
   {
-   "default": "0",
-   "fieldname": "unsubscribe",
-   "fieldtype": "Check",
-   "in_list_view": 1,
-   "label": "Unsubscribe",
-   "read_only": 1
-  },
-  {
    "fieldname": "stream_type",
    "fieldtype": "Select",
    "in_list_view": 1,
@@ -51,13 +46,44 @@
    "fieldtype": "Code",
    "label": "Condition",
    "read_only": 1
+  },
+  {
+   "fieldname": "amend_mode",
+   "fieldtype": "Select",
+   "label": "Amend Mode",
+   "options": "\nCreate New\nUpdate Source",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "target_docstatus",
+   "fieldtype": "Select",
+   "label": "Target Docstatus",
+   "options": "Follow Source\nDraft\nSubmitted\nCancelled",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "inherit_condition",
+   "fieldtype": "Check",
+   "label": "Inherit Condition",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "unsubscribe",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Unsubscribe",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2025-10-09 22:11:34.515845",
+ "modified": "2025-10-10 16:19:42.007030",
  "modified_by": "Administrator",
  "module": "Stream Sync",
  "name": "Stream Consumer Doctype",

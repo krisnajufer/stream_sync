@@ -63,13 +63,14 @@
    "default": "0",
    "fieldname": "incoming_change",
    "fieldtype": "Check",
+   "hidden": 1,
    "label": "Incoming Change"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-10-09 22:05:02.141904",
+ "modified": "2025-10-10 14:07:42.329351",
  "modified_by": "Administrator",
  "module": "Stream Sync",
  "name": "Stream Producer",
