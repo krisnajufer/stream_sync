@@ -286,7 +286,7 @@ def sync(update, producer_site, stream_producer, in_retry=False):
 		if update.update_type == "Create":
 			set_insert(update, producer_site, stream_producer.name)
 		if update.update_type == "Update":
-			set_update(update, producer_site)
+			set_update(update, producer_site, stream_producer.name)
 		if update.update_type == "Delete":
 			set_delete(update)
 		if in_retry:
@@ -319,6 +319,15 @@ def set_insert(update, producer_site, stream_producer):
 	else:
 		sync_dependencies(doc, producer_site)
 
+	producers_doctype = frappe.db.get_value("Stream Producer Doctype", {"parent": stream_producer, "ref_doctype": update.ref_doctype}, "*", as_dict=True)
+	docstatus ={
+		"Draft": 0,
+		"Submitted": 1,
+		"Cancelled":2
+	}
+
+	if producers_doctype.target_docstatus != "Follow Source":
+		doc.docstatus = docstatus[producers_doctype.target_docstatus]
 	if update.use_same_name:
 		doc.insert(set_name=update.docname, set_child_names=False)
 	else:
@@ -329,21 +338,31 @@ def set_insert(update, producer_site, stream_producer):
 		doc.insert(set_child_names=False)
 
 
-def set_update(update, producer_site):
+def set_update(update, producer_site, stream_producer):
 	"""Sync update type update"""
+	producers_doctype = frappe.db.get_value("Stream Producer Doctype", {"parent": stream_producer, "ref_doctype": update.ref_doctype}, "*", as_dict=True)
+	if producers_doctype.amend_mode == "Update Source":
+		docu = producer_site.get_doc(update.ref_doctype, update.docname)
+		update.docname = check_amended_from(docu, producer_site)
+		update.data.update({
+			"name": update.docname,
+			"amended_from": None
+		})
 	local_doc = get_local_doc(update)
 	if local_doc:
 		data = frappe._dict(update.data)
 
-		if data.changed:
+		if data.changed and producers_doctype.amend_mode != "Update Source":
 			local_doc.update(data.changed)
-		if data.removed:
+		if data.removed and producers_doctype.amend_mode != "Update Source":
 			local_doc = update_row_removed(local_doc, data.removed)
-		if data.row_changed:
+		if data.row_changed and producers_doctype.amend_mode != "Update Source":
 			update_row_changed(local_doc, data.row_changed)
-		if data.added:
+		if data.added and producers_doctype.amend_mode != "Update Source":
 			local_doc = update_row_added(local_doc, data.added)
-
+		if producers_doctype.amend_mode == "Update Source":
+			local_doc = update_non_table_fields(local_doc, data)
+			local_doc = replace_all_child_rows(local_doc, data)
 		if update.mapping:
 			if update.get("dependencies"):
 				dependencies_created = sync_mapped_dependencies(update.dependencies, producer_site)
@@ -351,9 +370,9 @@ def set_update(update, producer_site):
 					local_doc.update({fieldname: value})
 		else:
 			sync_dependencies(local_doc, producer_site)
-
-		local_doc.save()
-		local_doc.db_update_all()
+			local_doc.flags.ignore_version = True
+			local_doc.save()
+			local_doc.db_update_all()
 
 
 def update_row_removed(local_doc, removed):
@@ -421,6 +440,7 @@ def get_local_doc(update):
 	try:
 		if not update.use_same_name:
 			return frappe.get_doc(update.ref_doctype, {"remote_docname": update.docname})
+
 		return frappe.get_doc(update.ref_doctype, update.docname)
 	except frappe.DoesNotExistError:
 		return None
@@ -577,3 +597,86 @@ def resync(update):
 		update = get_mapped_update(update, producer_site)
 		update.data = json.loads(update.data)
 	return sync(update, producer_site, stream_producer, in_retry=True)
+
+
+def check_amended_from(doc, producer_site):
+	if doc.get('amended_from'):
+		amend_doc = producer_site.get_doc(doc.get('doctype'), doc.get('amended_from'))
+		return check_amended_from(amend_doc, producer_site)
+	return doc.get('name')
+
+
+def replace_all_child_rows(local_doc, changed):
+	"""Ganti semua child table rows dan insert ulang ke database.
+	   Hapus dulu record lama berdasarkan parent agar tidak duplicate entry."""
+	for tablename, rows in changed.items():
+		# Lewati jika rows bukan list
+		if not isinstance(rows, (list, tuple)):
+			continue
+
+		# Pastikan field adalah child table
+		table_field = next(
+			(f for f in local_doc.meta.fields if f.fieldtype == "Table" and f.fieldname == tablename),
+			None
+		)
+		if not table_field:
+			continue
+
+		# Dapatkan nama doctype child-nya
+		child_doctype = table_field.options
+
+		# Hapus semua record lama di database untuk parent ini
+		try:
+			frappe.db.delete(child_doctype, {"parent": local_doc.name})
+		except Exception as e:
+			frappe.log_error(f"Error deleting old child rows for {child_doctype}: {str(e)}")
+			continue
+
+		# Kosongkan child table di memori
+		local_doc.set(tablename, [])
+
+		# Tambahkan dan insert setiap baris baru ke DB
+		for row in rows:
+			if not isinstance(row, dict):
+				continue
+
+			try:
+				# Tambahkan ke child table di memori
+				local_doc.append(tablename, row)
+
+				# Insert langsung ke database
+				child_doc = frappe.get_doc(row)
+				child_doc.parent = local_doc.name
+				child_doc.parenttype = local_doc.doctype
+				child_doc.parentfield = tablename
+				child_doc.insert(ignore_permissions=True, set_name=child_doc.name)
+			except Exception as e:
+				frappe.log_error(f"Error inserting child row in {child_doctype}: {str(e)}")
+				continue
+
+	return local_doc
+
+
+def update_non_table_fields(local_doc, changed):
+	"""Update only non-table fields in local_doc based on changed data, skipping system fields."""
+	system_fields = {"creation", "modified", "modified_by", "owner", "idx", "doctype", "name", "docstatus"}
+
+	for fieldname, value in changed.items():
+		# Lewati jika field adalah Table
+		table_field = next(
+			(f for f in local_doc.meta.fields if f.fieldtype == "Table" and f.fieldname == fieldname),
+			None
+		)
+		if table_field:
+			continue
+
+		# Lewati field sistem yang dikontrol oleh Frappe
+		if fieldname in system_fields:
+			continue
+
+		# Jika field ada di dokumen, ubah nilainya
+		if fieldname in local_doc.as_dict():
+			local_doc.set(fieldname, value)
+
+	return local_doc
+

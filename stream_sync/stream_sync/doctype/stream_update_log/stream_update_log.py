@@ -60,15 +60,15 @@ def get_update(old, new, for_child=False):
 	Get document objects with updates only
 	If there is a change, then returns a dict like:
 	{
-	        "changed"		: {fieldname1: new_value1, fieldname2: new_value2, },
-	        "added"			: {table_fieldname1: [{row_dict1}, {row_dict2}], },
-	        "removed"		: {table_fieldname1: [row_name1, row_name2], },
-	        "row_changed"	: {table_fieldname1:
-	                {
-	                        child_fieldname1: new_val,
-	                        child_fieldname2: new_val
-	                },
-	        },
+			"changed"		: {fieldname1: new_value1, fieldname2: new_value2, },
+			"added"			: {table_fieldname1: [{row_dict1}, {row_dict2}], },
+			"removed"		: {table_fieldname1: [row_name1, row_name2], },
+			"row_changed"	: {table_fieldname1:
+					{
+							child_fieldname1: new_val,
+							child_fieldname2: new_val
+					},
+			},
 	}
 	"""
 	if not new:
