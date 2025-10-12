@@ -6,12 +6,12 @@ def test_manual_sync():
     condition = {
         "docstatus": 1,
         # "custom_tax_status": "Tax",
-        "amended_from": ["is", "set"]
+        "amended_from": ["is", "not set"]
     }
     
     data = frappe.db.get_all(doctype, filters=condition, pluck="name")
     
     for name in data:
         doc = frappe.get_doc(doctype, name)
-        make_stream_update_log(doc, "Update")
+        make_stream_update_log(doc, "Create")
         print(f"{name} - DONE")

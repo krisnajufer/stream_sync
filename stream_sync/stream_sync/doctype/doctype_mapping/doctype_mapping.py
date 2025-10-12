@@ -23,7 +23,7 @@ class DoctypeMapping(Document):
 
 			fieldtype = field.get("fieldtype")
 			if fieldtype in ["Link", "Dynamic Link", "Table"]:
-				if not field_map.mapping and not field_map.default_value:
+				if not field_map.mapping and not field_map.default_value and not field_map.is_empty:
 					msg = _(
 						"Row #{0}: Please set Mapping or Default Value for the field {1} since its a dependency field"
 					).format(field_map.idx, frappe.bold(field_map.local_fieldname))
@@ -169,9 +169,16 @@ def get_mapped_child_table_docs(child_map, table_entries, producer_site):
 	for child_doc in table_entries:
 		for mapping in child_map.field_mapping:
 			if child_doc.get(mapping.remote_fieldname):
-				child_doc[mapping.local_fieldname] = child_doc[mapping.remote_fieldname]
+				if mapping.default_value:
+					child_doc[mapping.local_fieldname] = mapping.default_value
+				elif mapping.is_empty:
+					child_doc[mapping.local_fieldname] = None
+				else:
+					child_doc[mapping.local_fieldname] = child_doc[mapping.remote_fieldname]
+
 				if mapping.local_fieldname != mapping.remote_fieldname:
 					child_doc.pop(mapping.remote_fieldname, None)
+		# frappe.throw(child_doc)
 		mapped_entries.append(child_doc)
 
 	# remove the remote fieldnames

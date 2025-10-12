@@ -326,6 +326,8 @@ def set_insert(update, producer_site, stream_producer):
 		"Cancelled":2
 	}
 
+	doc.flags.ignore_validate = producers_doctype.ignore_validate
+	doc.flags.ignore_mandatory = producers_doctype.ignore_mandatory
 	if producers_doctype.target_docstatus != "Follow Source":
 		doc.docstatus = docstatus[producers_doctype.target_docstatus]
 	if update.use_same_name:
