@@ -372,9 +372,9 @@ def set_update(update, producer_site, stream_producer):
 					local_doc.update({fieldname: value})
 		else:
 			sync_dependencies(local_doc, producer_site)
-			local_doc.flags.ignore_version = True
-			local_doc.save()
-			local_doc.db_update_all()
+		local_doc.flags.ignore_version = True
+		local_doc.save()
+		local_doc.db_update_all()
 
 
 def update_row_removed(local_doc, removed):
@@ -661,7 +661,7 @@ def replace_all_child_rows(local_doc, changed):
 
 def update_non_table_fields(local_doc, changed):
 	"""Update only non-table fields in local_doc based on changed data, skipping system fields."""
-	system_fields = {"creation", "modified", "modified_by", "owner", "idx", "doctype", "name", "docstatus"}
+	system_fields = {"creation", "modified","owner", "idx", "doctype", "name", "docstatus"}
 
 	for fieldname, value in changed.items():
 		# Lewati jika field adalah Table
