@@ -1,12 +1,15 @@
 # Copyright (c) 2025, Jufer and contributors
 # For license information, please see license.txt
 import re
+import json
 
 import frappe
 from frappe.model.document import Document
 from frappe.utils import get_datetime
+from frappe.utils.background_jobs import get_jobs
 
 from stream_sync.stream_sync.doctype.stream_consumer.stream_consumer import get_consumer_site
+from stream_sync.stream_sync.doctype.stream_update_log.stream_update_log import make_stream_update_log
 
 class SyncHub(Document):
 	@frappe.whitelist()
@@ -20,12 +23,12 @@ class SyncHub(Document):
 
 			filters, or_filters = parse_condition(row.condition)
 			documents = get_new_data_producer(self.ref_doctype, consumer_site, key, filters, or_filters, documents)
-
+			
 			filters.update({
 				"amended_from": ["is", "set"],
 				"docstatus": 1
 			})
-			documents = get_outdated_docs(self.ref_doctype, consumer_site, filters, documents)
+			documents = get_outdated_docs(self.ref_doctype, consumer_site, filters, documents, row)
 
 		return documents
 
@@ -37,7 +40,6 @@ def parse_condition(condition):
 	condition = condition.replace("doc.", "").strip()
 	filters, or_filters = {}, {}
 
-	# Pisahkan berdasarkan ' or ' terlebih dahulu
 	if " or " in condition:
 		parts = [p.strip() for p in condition.split(" or ")]
 		target = or_filters
@@ -74,12 +76,11 @@ def get_new_data_producer(doctype, consumer_site, key, filters, or_filters, docu
 
 	return documents
 
-def get_outdated_docs(doctype, consumer_site, filters, documents):
+def get_outdated_docs(doctype, consumer_site, filters, documents, consumer_doctype):
 	"""Bandingkan dokumen yang di-amend di Producer dan Consumer.
 	Jika consumer.modified < producer.modified → masukkan ke array hasil.
 	"""
 
-	# Ambil semua dokumen amend di Producer
 	producer_amended = frappe.get_all(
 		doctype,
 		filters=filters,
@@ -88,20 +89,19 @@ def get_outdated_docs(doctype, consumer_site, filters, documents):
 
 	for p_doc in producer_amended:
 		doc = frappe.get_doc(doctype, p_doc.name)
-		amended_from = check_amended_from(doc)
-		# Ambil dokumen lama di Consumer (dokumen asal yang belum di-amend)
+		amended_from = check_amended_from(doc) if consumer_doctype.amend_mode == "Update Source" else p_doc.name
 		consumer_doc = consumer_site.get_value(
 			doctype,
 			["name", "modified"],
 			{"name" :amended_from}
 		)
-		# Jika tidak ada di consumer, skip
+		
 		if not consumer_doc:
 			continue
 
 		consumer_modified = get_datetime(consumer_doc["modified"])
 		producer_modified = get_datetime(p_doc.modified)
-		# Jika versi consumer lebih lama dari producer
+	
 		if consumer_modified < producer_modified:
 			documents.append({
 				"document": p_doc.name,
@@ -115,3 +115,38 @@ def check_amended_from(doc):
 		amend_doc = frappe.get_doc(doc.get('doctype'), doc.get('amended_from'))
 		return check_amended_from(amend_doc)
 	return doc.get('name')
+
+
+@frappe.whitelist()
+def sync(data):
+	data = json.loads(data)
+	for row in data['sync_hub_document']:
+		doc = frappe.get_doc(data['ref_doctype'], row['document'])
+		# make_stream_update_log(doc, row['update_type'])
+		enqueued_method = (
+			"stream_sync.stream_sync.doctype.stream_update_log.stream_update_log.make_stream_update_log"
+		)
+		jobs = get_jobs()
+		if not jobs or enqueued_method not in jobs[frappe.local.site]:
+			frappe.enqueue(
+				enqueued_method, doc=doc, update_type=row['update_type'] , queue="long", enqueue_after_commit=True
+			)
+	return "Success"
+
+@frappe.whitelist()
+def get_doctype_sync(doctype, txt, searchfield, start, page_len, filters):
+	consumer_doctype = list(set(frappe.db.get_all("Stream Consumer Doctype", filters={"stream_type": "Manual"},pluck="ref_doctype")))
+	
+	query = """
+		SELECT name AS value FROM `tabDocType`
+		WHERE name IN %(name)s AND name LIKE %(txt)s
+	"""
+	cond = {
+		'name': consumer_doctype,
+		"txt": f"%{txt}%",
+		"start": start,
+		"page_len": page_len
+	}
+
+	results = frappe.db.sql(query, cond)
+	return results

@@ -365,6 +365,7 @@ def set_update(update, producer_site, stream_producer):
 		if producers_doctype.amend_mode == "Update Source":
 			local_doc = update_non_table_fields(local_doc, data)
 			local_doc = replace_all_child_rows(local_doc, data)
+			local_doc = mapping_data(local_doc, update.mapping)
 		if update.mapping:
 			if update.get("dependencies"):
 				dependencies_created = sync_mapped_dependencies(update.dependencies, producer_site)
@@ -372,6 +373,7 @@ def set_update(update, producer_site, stream_producer):
 					local_doc.update({fieldname: value})
 		else:
 			sync_dependencies(local_doc, producer_site)
+		local_doc.flags.ignore_validate = producers_doctype.ignore_validate
 		local_doc.flags.ignore_version = True
 		local_doc.save()
 		local_doc.db_update_all()
@@ -682,3 +684,33 @@ def update_non_table_fields(local_doc, changed):
 
 	return local_doc
 
+def mapping_data(local_doc, mapping_name):
+    """Lakukan mapping data ke local_doc secara rekursif berdasarkan Doctype Mapping"""
+    mapping_doc = frappe.get_doc("Doctype Mapping", mapping_name)
+
+    for m in mapping_doc.field_mapping:
+        if not m.mapping_type or m.mapping_type == "":
+            if getattr(m, "is_empty", False):
+                value = None
+            else:
+                value = m.source_value or getattr(local_doc, m.local_fieldname, None)
+
+            if hasattr(local_doc, m.local_fieldname):
+                try:
+                    local_doc.set(m.local_fieldname, value)
+                except Exception:
+                    setattr(local_doc, m.local_fieldname, value)
+
+        elif m.mapping_type == "Child Table":
+            if not m.local_fieldname or m.is_empty:
+                continue
+            if hasattr(local_doc, m.local_fieldname):
+                child_table = getattr(local_doc, m.local_fieldname)
+                if isinstance(child_table, list):
+                    for child_row in child_table:
+                        mapping_data(child_row, m.mapping)
+
+        elif m.mapping_type == "Document":
+            mapping_data(local_doc, m.mapping)
+
+    return local_doc

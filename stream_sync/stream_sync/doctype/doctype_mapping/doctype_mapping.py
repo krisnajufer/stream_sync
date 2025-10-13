@@ -145,6 +145,8 @@ class DoctypeMapping(Document):
 				{"local_fieldname": local_table_name, "parent": self.name},
 				"mapping",
 			)
+			if not table_map:
+				continue
 			table_map = frappe.get_doc("Doctype Mapping", table_map)
 			docs = []
 			for entry in entries:
