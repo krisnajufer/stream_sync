@@ -478,6 +478,7 @@ def sync_dependencies(document, producer_site, stream_producer):
 			for entry in child_table:
 				# child_doc = producer_site.get_doc(entry.doctype, entry.name)
 				site_name = stream_producer.replace("https://", "")
+				frappe.throw(site_name)
 				frappe.init(site_name)
 				frappe.flags.ignore_permissions = True
 				child_doc = frappe.get_doc(entry.doctype, entry.name)
