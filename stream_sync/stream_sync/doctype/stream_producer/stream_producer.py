@@ -756,7 +756,7 @@ def get_doc_from_other_site(site_url_or_name, doctype, docname):
 		return doc
 
 	except Exception as e:
-		frappe.log_error(f"Error saat mengambil dokumen {doctype} - {docname} dari site {site_url_or_name}: {e}", "get_doc_from_other_site")
+		frappe.log_error(f"Error saat mengambil dokumen {site_name} {doctype} - {docname} dari site {site_url_or_name}: {e}", "get_doc_from_other_site")
 		raise
 
 	finally:
