@@ -745,6 +745,7 @@ def get_doc_from_other_site(site_url_or_name, doctype, docname):
 		site_name = re.sub(r"^https?://", "", site_url_or_name).strip("/")
 
 		# Inisialisasi dan koneksi ke site target
+		frappe.destroy()
 		frappe.init(site_name)
 		frappe.connect()
 
