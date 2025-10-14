@@ -156,7 +156,7 @@ def get_doctype_sync(doctype, txt, searchfield, start, page_len, filters):
 		"start": start,
 		"page_len": page_len
 	}
-	result = []
+	results = []
 	if consumer_doctype:
 		results = frappe.db.sql(query, cond)
 	return results
