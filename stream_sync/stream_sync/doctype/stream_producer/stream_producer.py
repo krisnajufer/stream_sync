@@ -476,7 +476,9 @@ def sync_dependencies(document, producer_site):
 		for df in table_fields:
 			child_table = doc.get(df.fieldname)
 			for entry in child_table:
+				frappe.flags.ignore_permissions = True
 				child_doc = producer_site.get_doc(entry.doctype, entry.name)
+				
 				if child_doc:
 					child_doc = frappe._dict(child_doc)
 					set_dependencies(child_doc, frappe.get_meta(entry.doctype).get_link_fields(), producer_site)
