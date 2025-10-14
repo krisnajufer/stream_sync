@@ -246,7 +246,7 @@ def pull_from_node(stream_producer):
 	last_update = stream_producer.get_last_update()
 
 	(doctypes, mapping_config, naming_config) = get_config(stream_producer.producer_doctypes)
-	
+
 	updates = get_updates(producer_site, last_update, doctypes)
 
 	for update in updates:
@@ -310,7 +310,7 @@ def set_insert(update, producer_site, stream_producer):
 		# doc already created
 		return
 	doc = frappe.get_doc(update.data)
-
+	
 	if update.mapping:
 		if update.get("dependencies"):
 			dependencies_created = sync_mapped_dependencies(update.dependencies, producer_site)

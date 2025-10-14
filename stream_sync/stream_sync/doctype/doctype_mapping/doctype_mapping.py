@@ -51,14 +51,12 @@ class DoctypeMapping(Document):
 						doc[mapping.local_fieldname] = mapping.default_value
 
 				if mapping.mapping_type == "Child Table" and update_type != "Update":
-					if mapping.is_empty:
-						continue
 					doc[mapping.local_fieldname] = get_mapped_child_table_docs(
 						mapping.mapping, doc[mapping.remote_fieldname], producer_site
 					)
 				else:
 					# copy value into local fieldname key and remove remote fieldname key
-					doc[mapping.local_fieldname] = None if mapping.is_empty else doc[mapping.remote_fieldname]
+					doc[mapping.local_fieldname] = None if mapping.is_empty else mapping.default_value
 
 				if mapping.local_fieldname != mapping.remote_fieldname:
 					remote_fields.append(mapping.remote_fieldname)
@@ -167,6 +165,8 @@ class DoctypeMapping(Document):
 
 def get_mapped_child_table_docs(child_map, table_entries, producer_site):
 	"""Get mapping for child doctypes"""
+	if not child_map:
+		return []
 	child_map = frappe.get_doc("Doctype Mapping", child_map)
 	mapped_entries = []
 	remote_fields = []

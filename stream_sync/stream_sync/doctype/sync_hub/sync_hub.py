@@ -60,7 +60,8 @@ def get_new_data_producer(doctype, consumer_site, key, filters, or_filters, docu
 	producer_data = frappe.db.get_all(doctype, filters=filters, or_filters=or_filters, fields=[key])
 
 	if check_doctype.is_submittable:
-		filters.pop("docstatus")
+		if filters.get('docstatus'):
+			filters.pop("docstatus")
 	consumer_data = consumer_site.get_list(doctype, filters=filters, fields=[key])
 
 	name_sources = {i[key]: i for i in producer_data}
