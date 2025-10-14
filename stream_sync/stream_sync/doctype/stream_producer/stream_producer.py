@@ -477,15 +477,7 @@ def sync_dependencies(document, producer_site, stream_producer):
 			child_table = doc.get(df.fieldname)
 			for entry in child_table:
 				# child_doc = producer_site.get_doc(entry.doctype, entry.name)
-				site_name = stream_producer.replace("https://", "")
-				frappe.init(site_name)
-				frappe.connect()				
-				frappe.flags.ignore_permissions = True
-				child_doc = frappe.get_doc(entry.doctype, entry.name)
-				frappe.destroy()
-				current_site = frappe.local.site
-				frappe.init(current_site)
-				frappe.connect()
+				child_doc = get_doc_from_other_site(stream_producer, entry.doctype, entry.name)
 				if child_doc:
 					child_doc = frappe._dict(child_doc)
 					set_dependencies(child_doc, frappe.get_meta(entry.doctype).get_link_fields(), producer_site)
@@ -731,3 +723,46 @@ def get_docstatus_target(target_docstatus):
 		"Follow Source": 3
 	}
 	return docstatus[target_docstatus]
+
+import frappe, re
+
+def get_doc_from_other_site(site_url_or_name, doctype, docname):
+	"""
+	Mengambil dokumen dari site lain tanpa menggunakan FrappeClient.
+	Fungsi ini langsung membaca database site lain menggunakan frappe.init() + frappe.connect().
+	
+	Args:
+		site_url_or_name (str): Nama site atau URL site producer (misal: 'producer.site.com' atau 'https://producer.site.com')
+		doctype (str): Nama Doctype dokumen yang ingin diambil
+		docname (str): Nama dokumen (name) yang ingin diambil
+
+	Returns:
+		Document: frappe.model.document.Document dari site target
+	"""
+	current_site = frappe.local.site  # simpan site aktif sekarang
+	try:
+		# Hilangkan protokol jika ada
+		site_name = re.sub(r"^https?://", "", site_url_or_name).strip("/")
+
+		# Inisialisasi dan koneksi ke site target
+		frappe.init(site_name)
+		frappe.connect()
+
+		# Abaikan permission
+		frappe.flags.ignore_permissions = True
+
+		# Ambil dokumen
+		doc = frappe.get_doc(doctype, docname)
+		return doc
+
+	except Exception as e:
+		frappe.log_error(f"Error saat mengambil dokumen {doctype} - {docname} dari site {site_url_or_name}: {e}", "get_doc_from_other_site")
+		raise
+
+	finally:
+		# Tutup koneksi site target
+		frappe.destroy()
+
+		# Kembalikan ke site semula
+		frappe.init(current_site)
+		frappe.connect()
