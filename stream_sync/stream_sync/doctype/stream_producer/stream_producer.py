@@ -321,6 +321,7 @@ def set_insert(update, producer_site, stream_producer):
 
 	producers_doctype = frappe.db.get_value("Stream Producer Doctype", {"parent": stream_producer, "ref_doctype": update.ref_doctype}, "*", as_dict=True)
 
+	doc.flags.ignore_permission = True
 	doc.flags.ignore_validate = producers_doctype.ignore_validate
 	doc.flags.ignore_mandatory = producers_doctype.ignore_mandatory
 	if producers_doctype.target_docstatus != "Follow Source":
@@ -372,6 +373,7 @@ def set_update(update, producer_site, stream_producer):
 			sync_dependencies(local_doc, producer_site)
 		local_doc.flags.ignore_validate = producers_doctype.ignore_validate
 		local_doc.flags.ignore_version = True
+		local_doc.flags.ignore_permission = True
 		local_doc.save()
 		local_doc.db_update_all()
 
