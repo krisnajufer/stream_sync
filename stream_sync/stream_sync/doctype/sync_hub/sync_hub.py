@@ -23,12 +23,8 @@ class SyncHub(Document):
 
 			filters, or_filters = parse_condition(row.condition)
 			documents = get_new_data_producer(self.ref_doctype, consumer_site, key, filters, or_filters, documents)
-			
-			filters.update({
-				"amended_from": ["is", "set"],
-				"docstatus": 1
-			})
-			documents = get_outdated_docs(self.ref_doctype, consumer_site, filters, documents, row)
+
+			documents = get_outdated_docs(self.ref_doctype, consumer_site, key, filters, documents, row)
 
 		return documents
 
@@ -58,11 +54,14 @@ def parse_condition(condition):
 	return filters, or_filters
 
 def get_new_data_producer(doctype, consumer_site, key, filters, or_filters, documents):
-	filters.update({"amended_from": ["is", "not set"]})
-	producer_data = frappe.db.get_all(doctype, filters=filters, or_filters=or_filters, fields=["name"])
+	check_doctype = frappe.db.get_value("DocType", doctype, "*", as_dict=True)
+	if check_doctype.is_submittable:
+		filters.update({"amended_from": ["is", "not set"]})
+	producer_data = frappe.db.get_all(doctype, filters=filters, or_filters=or_filters, fields=[key])
 
-	filters.pop("docstatus")
-	consumer_data = consumer_site.get_list(doctype, filters=filters, fields=["name"])
+	if check_doctype.is_submittable:
+		filters.pop("docstatus")
+	consumer_data = consumer_site.get_list(doctype, filters=filters, fields=[key])
 
 	name_sources = {i[key]: i for i in producer_data}
 	name_targets = {i[key]: i for i in consumer_data}
@@ -76,25 +75,32 @@ def get_new_data_producer(doctype, consumer_site, key, filters, or_filters, docu
 
 	return documents
 
-def get_outdated_docs(doctype, consumer_site, filters, documents, consumer_doctype):
+def get_outdated_docs(doctype, consumer_site, key, filters, documents, consumer_doctype):
 	"""Bandingkan dokumen yang di-amend di Producer dan Consumer.
 	Jika consumer.modified < producer.modified → masukkan ke array hasil.
 	"""
-
+	check_doctype = frappe.db.get_value("DocType", doctype, "*", as_dict=True)
+	fields = [key, "modified"]
+	if check_doctype.is_submittable:
+		filters.update({
+			"amended_from": ["is", "set"],
+			"docstatus": 1
+		})
+		fields.append("amended_from")
 	producer_amended = frappe.get_all(
 		doctype,
 		filters=filters,
-		fields=["name", "amended_from", "modified"]
+		fields=fields
 	)
 
 
 	for p_doc in producer_amended:
-		doc = frappe.get_doc(doctype, p_doc.name)
-		amended_from = check_amended_from(doc) if consumer_doctype.amend_mode == "Update Source" else p_doc.name
+		doc = frappe.get_doc(doctype, p_doc[key])
+		amended_from = check_amended_from(doc) if consumer_doctype.amend_mode == "Update Source" else p_doc[key]
 		consumer_doc = consumer_site.get_value(
 			doctype,
-			["name", "modified", "docstatus"],
-			{"name" :amended_from}
+			[key, "modified", "docstatus"],
+			{key :amended_from}
 		)
 		
 		if not consumer_doc:
@@ -106,7 +112,7 @@ def get_outdated_docs(doctype, consumer_site, filters, documents, consumer_docty
 
 		if consumer_modified < producer_modified and (consumer_docstatus == 3 or consumer_docstatus  == consumer_doc["docstatus"]):
 			documents.append({
-				"document": p_doc.name,
+				"document": p_doc[key],
 				"update_type": "Update"
 			})
 

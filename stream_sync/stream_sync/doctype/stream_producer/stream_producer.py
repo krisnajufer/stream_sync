@@ -246,7 +246,7 @@ def pull_from_node(stream_producer):
 	last_update = stream_producer.get_last_update()
 
 	(doctypes, mapping_config, naming_config) = get_config(stream_producer.producer_doctypes)
-
+	
 	updates = get_updates(producer_site, last_update, doctypes)
 
 	for update in updates:

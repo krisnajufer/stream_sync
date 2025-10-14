@@ -51,12 +51,14 @@ class DoctypeMapping(Document):
 						doc[mapping.local_fieldname] = mapping.default_value
 
 				if mapping.mapping_type == "Child Table" and update_type != "Update":
+					if mapping.is_empty:
+						continue
 					doc[mapping.local_fieldname] = get_mapped_child_table_docs(
 						mapping.mapping, doc[mapping.remote_fieldname], producer_site
 					)
 				else:
 					# copy value into local fieldname key and remove remote fieldname key
-					doc[mapping.local_fieldname] = doc[mapping.remote_fieldname]
+					doc[mapping.local_fieldname] = None if mapping.is_empty else doc[mapping.remote_fieldname]
 
 				if mapping.local_fieldname != mapping.remote_fieldname:
 					remote_fields.append(mapping.remote_fieldname)
