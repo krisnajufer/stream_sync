@@ -500,7 +500,7 @@ def sync_dependencies(document, producer_site):
 				master_doc = producer_site.get_doc(linked_doctype, docname)
 				try:
 					master_doc = frappe.get_doc(master_doc)
-					master_doc.insert(set_name=docname)
+					master_doc.insert(set_name=docname, ignore_permissions=True)
 					frappe.db.commit()
 
 				# for dependency inside a dependency
