@@ -317,7 +317,7 @@ def set_insert(update, producer_site, stream_producer):
 			for fieldname, value in dependencies_created.items():
 				doc.update({fieldname: value})
 	else:
-		sync_dependencies(doc, producer_site)
+		sync_dependencies(doc, producer_site, stream_producer)
 
 	producers_doctype = frappe.db.get_value("Stream Producer Doctype", {"parent": stream_producer, "ref_doctype": update.ref_doctype}, "*", as_dict=True)
 
@@ -370,7 +370,7 @@ def set_update(update, producer_site, stream_producer):
 			else:
 				local_doc = update_non_table_fields(local_doc, data)
 		else:
-			sync_dependencies(local_doc, producer_site)
+			sync_dependencies(local_doc, producer_site, stream_producer)
 		local_doc.flags.ignore_validate = producers_doctype.ignore_validate
 		local_doc.flags.ignore_version = True
 		local_doc.flags.ignore_permission = True
@@ -449,7 +449,7 @@ def get_local_doc(update):
 		return None
 
 
-def sync_dependencies(document, producer_site):
+def sync_dependencies(document, producer_site, stream_producer):
 	"""
 	dependencies is a dictionary to store all the docs
 	having dependencies and their sync status,
@@ -466,19 +466,26 @@ def sync_dependencies(document, producer_site):
 		link_fields = meta.get_link_fields()
 		dl_fields = meta.get_dynamic_link_fields()
 		if table_fields:
-			sync_child_table_dependencies(doc, table_fields, producer_site)
+			sync_child_table_dependencies(doc, table_fields, producer_site, stream_producer)
 		if link_fields:
 			sync_link_dependencies(doc, link_fields, producer_site)
 		if dl_fields:
 			sync_dynamic_link_dependencies(doc, dl_fields, producer_site)
 
-	def sync_child_table_dependencies(doc, table_fields, producer_site):
+	def sync_child_table_dependencies(doc, table_fields, producer_site, stream_producer):
 		for df in table_fields:
 			child_table = doc.get(df.fieldname)
 			for entry in child_table:
+				# child_doc = producer_site.get_doc(entry.doctype, entry.name)
+				site_name = stream_producer.replace("https://", "")
+				frappe.init(site_name)
 				frappe.flags.ignore_permissions = True
 				child_doc = producer_site.get_doc(entry.doctype, entry.name)
-				
+				frappe.connect()				
+				frappe.destroy()
+				current_site = frappe.local.site
+				frappe.init(current_site)
+				frappe.connect()
 				if child_doc:
 					child_doc = frappe._dict(child_doc)
 					set_dependencies(child_doc, frappe.get_meta(entry.doctype).get_link_fields(), producer_site)
@@ -686,35 +693,35 @@ def update_non_table_fields(local_doc, changed):
 	return local_doc
 
 def mapping_data(local_doc, mapping_name):
-    """Lakukan mapping data ke local_doc secara rekursif berdasarkan Doctype Mapping"""
-    mapping_doc = frappe.get_doc("Doctype Mapping", mapping_name)
+	"""Lakukan mapping data ke local_doc secara rekursif berdasarkan Doctype Mapping"""
+	mapping_doc = frappe.get_doc("Doctype Mapping", mapping_name)
 
-    for m in mapping_doc.field_mapping:
-        if not m.mapping_type or m.mapping_type == "":
-            if getattr(m, "is_empty", False):
-                value = None
-            else:
-                value = m.source_value or getattr(local_doc, m.local_fieldname, None)
+	for m in mapping_doc.field_mapping:
+		if not m.mapping_type or m.mapping_type == "":
+			if getattr(m, "is_empty", False):
+				value = None
+			else:
+				value = m.source_value or getattr(local_doc, m.local_fieldname, None)
 
-            if hasattr(local_doc, m.local_fieldname):
-                try:
-                    local_doc.set(m.local_fieldname, value)
-                except Exception:
-                    setattr(local_doc, m.local_fieldname, value)
+			if hasattr(local_doc, m.local_fieldname):
+				try:
+					local_doc.set(m.local_fieldname, value)
+				except Exception:
+					setattr(local_doc, m.local_fieldname, value)
 
-        elif m.mapping_type == "Child Table":
-            if not m.local_fieldname or m.is_empty:
-                continue
-            if hasattr(local_doc, m.local_fieldname):
-                child_table = getattr(local_doc, m.local_fieldname)
-                if isinstance(child_table, list):
-                    for child_row in child_table:
-                        mapping_data(child_row, m.mapping)
+		elif m.mapping_type == "Child Table":
+			if not m.local_fieldname or m.is_empty:
+				continue
+			if hasattr(local_doc, m.local_fieldname):
+				child_table = getattr(local_doc, m.local_fieldname)
+				if isinstance(child_table, list):
+					for child_row in child_table:
+						mapping_data(child_row, m.mapping)
 
-        elif m.mapping_type == "Document":
-            mapping_data(local_doc, m.mapping)
+		elif m.mapping_type == "Document":
+			mapping_data(local_doc, m.mapping)
 
-    return local_doc
+	return local_doc
 
 def get_docstatus_target(target_docstatus):
 	docstatus ={
