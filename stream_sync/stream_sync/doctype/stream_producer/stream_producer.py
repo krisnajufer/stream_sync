@@ -320,17 +320,11 @@ def set_insert(update, producer_site, stream_producer):
 		sync_dependencies(doc, producer_site)
 
 	producers_doctype = frappe.db.get_value("Stream Producer Doctype", {"parent": stream_producer, "ref_doctype": update.ref_doctype}, "*", as_dict=True)
-	docstatus ={
-		"Draft": 0,
-		"Submitted": 1,
-		"Cancelled":2
-	}
 
 	doc.flags.ignore_validate = producers_doctype.ignore_validate
 	doc.flags.ignore_mandatory = producers_doctype.ignore_mandatory
 	if producers_doctype.target_docstatus != "Follow Source":
-		doc.docstatus = docstatus[producers_doctype.target_docstatus]
-	if update.use_same_name:
+		doc.docstatus = get_docstatus_target(producers_doctype.target_docstatus)
 		doc.insert(set_name=update.docname, set_child_names=False)
 	else:
 		# if Stream consumer is not saving documents with the same name as the producer
@@ -351,7 +345,8 @@ def set_update(update, producer_site, stream_producer):
 			"amended_from": None
 		})
 	local_doc = get_local_doc(update)
-	if local_doc:
+	target_docstatus = get_docstatus_target(producers_doctype.target_docstatus)
+	if local_doc and (local_doc.docstatus == target_docstatus or target_docstatus == 3):
 		data = frappe._dict(update.data)
 
 		if data.changed and producers_doctype.amend_mode != "Update Source":
@@ -714,3 +709,12 @@ def mapping_data(local_doc, mapping_name):
             mapping_data(local_doc, m.mapping)
 
     return local_doc
+
+def get_docstatus_target(target_docstatus):
+	docstatus ={
+		"Draft": 0,
+		"Submitted": 1,
+		"Cancelled":2,
+		"Follow Source": 3
+	}
+	return docstatus[target_docstatus]

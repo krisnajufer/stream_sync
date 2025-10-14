@@ -87,12 +87,13 @@ def get_outdated_docs(doctype, consumer_site, filters, documents, consumer_docty
 		fields=["name", "amended_from", "modified"]
 	)
 
+
 	for p_doc in producer_amended:
 		doc = frappe.get_doc(doctype, p_doc.name)
 		amended_from = check_amended_from(doc) if consumer_doctype.amend_mode == "Update Source" else p_doc.name
 		consumer_doc = consumer_site.get_value(
 			doctype,
-			["name", "modified"],
+			["name", "modified", "docstatus"],
 			{"name" :amended_from}
 		)
 		
@@ -100,9 +101,10 @@ def get_outdated_docs(doctype, consumer_site, filters, documents, consumer_docty
 			continue
 
 		consumer_modified = get_datetime(consumer_doc["modified"])
+		consumer_docstatus = get_docstatus_target(consumer_doctype.target_docstatus)
 		producer_modified = get_datetime(p_doc.modified)
-	
-		if consumer_modified < producer_modified:
+
+		if consumer_modified < producer_modified and (consumer_docstatus == 3 or consumer_docstatus  == consumer_doc["docstatus"]):
 			documents.append({
 				"document": p_doc.name,
 				"update_type": "Update"
@@ -135,7 +137,7 @@ def sync(data):
 
 @frappe.whitelist()
 def get_doctype_sync(doctype, txt, searchfield, start, page_len, filters):
-	consumer_doctype = list(set(frappe.db.get_all("Stream Consumer Doctype", filters={"stream_type": "Manual"},pluck="ref_doctype")))
+	consumer_doctype = list(set(frappe.db.get_all("Stream Consumer Doctype", filters={"stream_type": "Manual", "status": "Actived"},pluck="ref_doctype")))
 	
 	query = """
 		SELECT name AS value FROM `tabDocType`
@@ -150,3 +152,12 @@ def get_doctype_sync(doctype, txt, searchfield, start, page_len, filters):
 
 	results = frappe.db.sql(query, cond)
 	return results
+
+def get_docstatus_target(target_docstatus):
+	docstatus ={
+		"Draft": 0,
+		"Submitted": 1,
+		"Cancelled":2,
+		"Follow Source": 3
+	}
+	return docstatus[target_docstatus]
