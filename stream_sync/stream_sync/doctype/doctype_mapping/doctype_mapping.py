@@ -56,7 +56,12 @@ class DoctypeMapping(Document):
 					)
 				else:
 					# copy value into local fieldname key and remove remote fieldname key
-					doc[mapping.local_fieldname] = None if mapping.is_empty else mapping.default_value
+					if mapping.is_empty:
+						doc[mapping.local_fieldname] = None
+					elif mapping.default_value:
+						doc[mapping.local_fieldname] = mapping.default_value
+					else:	
+						doc[mapping.local_fieldname] = doc[mapping.remote_fieldname]
 
 				if mapping.local_fieldname != mapping.remote_fieldname:
 					remote_fields.append(mapping.remote_fieldname)

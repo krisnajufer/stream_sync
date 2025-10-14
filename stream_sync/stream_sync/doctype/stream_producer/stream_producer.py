@@ -366,6 +366,8 @@ def set_update(update, producer_site, stream_producer):
 				dependencies_created = sync_mapped_dependencies(update.dependencies, producer_site)
 				for fieldname, value in dependencies_created.items():
 					local_doc.update({fieldname: value})
+			else:
+				local_doc = update_non_table_fields(local_doc, data)
 		else:
 			sync_dependencies(local_doc, producer_site)
 		local_doc.flags.ignore_validate = producers_doctype.ignore_validate
