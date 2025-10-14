@@ -752,11 +752,11 @@ def get_doc_from_other_site(site_url_or_name, doctype, docname):
 		frappe.flags.ignore_permissions = True
 
 		# Ambil dokumen
-		doc = frappe.get_doc(doctype, docname)
+		doc = frappe.db.get_value(doctype, docname, "*", as_dict=1)
 		return doc
 
 	except Exception as e:
-		frappe.log_error(f"Error saat mengambil dokumen {doctype} - {docname} dari site {site_url_or_name} | {site_name}: {e}", "get_doc_from_other_site")
+		frappe.log_error(f"Error saat mengambil dokumen {doctype} - {docname} dari site {site_name}: {e}", "get_doc_from_other_site")
 		raise
 
 	finally:
