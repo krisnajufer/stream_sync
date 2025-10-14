@@ -45,6 +45,7 @@ class StreamConsumer(Document):
 
 	def update_consumer_status(self):
 		consumer_site = get_consumer_site(self.callback_url)
+		frappe.throw(get_url())
 		stream_producer = consumer_site.get_doc("Stream Producer", get_url())
 		stream_producer = frappe._dict(stream_producer)
 		config = stream_producer.producer_doctypes
