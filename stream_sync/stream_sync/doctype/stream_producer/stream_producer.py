@@ -480,9 +480,9 @@ def sync_dependencies(document, producer_site, stream_producer):
 				site_name = stream_producer.replace("https://", "")
 				frappe.throw(site_name)
 				frappe.init(site_name)
+				frappe.connect()				
 				frappe.flags.ignore_permissions = True
 				child_doc = frappe.get_doc(entry.doctype, entry.name)
-				frappe.connect()				
 				frappe.destroy()
 				current_site = frappe.local.site
 				frappe.init(current_site)
