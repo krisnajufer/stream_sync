@@ -5,8 +5,6 @@ from frappe.model.naming import set_name_by_naming_series, set_name_from_naming_
 
 class CustomerCustom(Customer):
 	def autoname(self):
-		if getattr(self, "flags", None) and getattr(self.flags, "from_producer", False):
-			return
 		cust_master_name = frappe.defaults.get_global_default("cust_master_name")
 		if cust_master_name == "Customer Name":
 			self.name = self.get_customer_name()
