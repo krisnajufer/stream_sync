@@ -327,6 +327,8 @@ def set_insert(update, producer_site, stream_producer):
 	doc.flags.ignore_mandatory = producers_doctype.ignore_mandatory
 	if producers_doctype.target_docstatus != "Follow Source":
 		doc.docstatus = get_docstatus_target(producers_doctype.target_docstatus)
+
+	if update.use_same_name:
 		doc.insert(set_name=update.docname, set_child_names=False)
 	else:
 		# if Stream consumer is not saving documents with the same name as the producer
