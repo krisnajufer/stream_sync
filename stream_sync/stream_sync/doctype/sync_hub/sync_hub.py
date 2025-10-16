@@ -16,52 +16,72 @@ class SyncHub(Document):
 	def get_data(self):
 		key = "item_code" if self.ref_doctype == "Item" else "name"
 		consumer_doctype = frappe.db.get_all("Stream Consumer Doctype", filters={"ref_doctype": self.ref_doctype, "stream_type": "Manual"}, fields="*")
-		
+
 		documents = []
 		for row in consumer_doctype:
 			consumer_site = get_consumer_site(row.parent)
 
 			filters, or_filters = parse_condition(row.condition)
+			
+			if self.is_filter:
+				if self.ref_doctype in ["Sales Order", "Purchase Order"]:
+					filters.append(['transaction_date', 'between', [self.from_date, self.to_date]])
+				else:
+					filters.append(['posting_date', 'between', [self.from_date, self.to_date]])
+
 			documents = get_new_data_producer(self.ref_doctype, consumer_site, key, filters, or_filters, documents)
 
 			documents = get_outdated_docs(self.ref_doctype, consumer_site, key, filters, documents, row)
 
 		return documents
 
+
 def parse_condition(condition):
-	"""Ubah string condition jadi filters dan or_filters untuk frappe.db.get_list"""
+
 	if not condition:
-		return {}, {}
+		return [], []
 
 	condition = condition.replace("doc.", "").strip()
-	filters, or_filters = {}, {}
+	filters, or_filters = [], []
 
-	if " or " in condition:
-		parts = [p.strip() for p in condition.split(" or ")]
+	# Deteksi apakah menggunakan OR
+	if " or " in condition.lower():
+		parts = [p.strip() for p in re.split(r"\s+or\s+", condition, flags=re.IGNORECASE)]
 		target = or_filters
 	else:
-		parts = [p.strip() for p in condition.split(" and ")]
+		parts = [p.strip() for p in re.split(r"\s+and\s+", condition, flags=re.IGNORECASE)]
 		target = filters
 
 	for part in parts:
-		m = re.match(r"(\w+)\s*(==|!=)\s*[\"']?([^\"']+)[\"']?", part)
-		if m:
-			field, op, val = m.groups()
-			if val.isdigit():
-				val = int(val)
-			target[field] = [("=" if op == "==" else "!="), val]
+		m = re.match(r"(\w+)\s*(==|!=|>=|<=|>|<|like)\s*(.*)", part, re.IGNORECASE)
+		if not m:
+			continue
+
+		field, op, val = m.groups()
+		field, op = field.strip(), op.strip().lower()
+
+		# Bersihkan tanda kutip jika ada
+		val = val.strip().strip('"').strip("'")
+
+		# Konversi angka jika bisa
+		if val.isdigit():
+			val = int(val)
+
+		# Ganti '==' dengan '=' agar sesuai format frappe
+		target.append([field, "=" if op == "==" else op, val])
 
 	return filters, or_filters
+
 
 def get_new_data_producer(doctype, consumer_site, key, filters, or_filters, documents):
 	check_doctype = frappe.db.get_value("DocType", doctype, "*", as_dict=True)
 	if check_doctype.is_submittable:
-		filters.update({"amended_from": ["is", "not set"]})
+		filters.append(["amended_from", "is", "not set"])
 	producer_data = frappe.db.get_all(doctype, filters=filters, or_filters=or_filters, fields=[key])
 
 	if check_doctype.is_submittable:
-		if filters.get('docstatus'):
-			filters.pop("docstatus")
+		filters = [f for f in filters if f[0] != "docstatus"]
+
 	consumer_data = consumer_site.get_list(doctype, filters=filters, fields=[key])
 
 	name_sources = {i[key]: i for i in producer_data}
@@ -83,10 +103,9 @@ def get_outdated_docs(doctype, consumer_site, key, filters, documents, consumer_
 	check_doctype = frappe.db.get_value("DocType", doctype, "*", as_dict=True)
 	fields = [key, "modified"]
 	if check_doctype.is_submittable:
-		filters.update({
-			"amended_from": ["is", "set"],
-			"docstatus": 1
-		})
+		filters.append(["amended_from", "is", "set"])
+		filters.append(["docstatus", "=", 1])
+
 		fields.append("amended_from")
 	producer_amended = frappe.get_all(
 		doctype,
@@ -131,16 +150,17 @@ def sync(data):
 	data = json.loads(data)
 	for row in data['sync_hub_document']:
 		doc = frappe.get_doc(data['ref_doctype'], row['document'])
-		# make_stream_update_log(doc, row['update_type'])
-		enqueued_method = (
-			"stream_sync.stream_sync.doctype.stream_update_log.stream_update_log.make_stream_update_log"
-		)
-		jobs = get_jobs()
-		if not jobs or enqueued_method not in jobs[frappe.local.site]:
-			frappe.enqueue(
-				enqueued_method, doc=doc, update_type=row['update_type'] , queue="long", enqueue_after_commit=True
-			)
-	return "Success"
+		make_stream_update_log(doc, row['update_type'])
+
+		# enqueued_method = (
+		# 	"stream_sync.stream_sync.doctype.stream_update_log.stream_update_log.make_stream_update_log"
+		# )
+		# jobs = get_jobs()
+		# if not jobs or enqueued_method not in jobs[frappe.local.site]:
+		# 	frappe.enqueue(
+		# 		enqueued_method, doc=doc, update_type=row['update_type'] , queue="long", enqueue_after_commit=True
+		# 	)
+	return freeze_on_progress()
 
 @frappe.whitelist()
 def get_doctype_sync(doctype, txt, searchfield, start, page_len, filters):
@@ -169,3 +189,12 @@ def get_docstatus_target(target_docstatus):
 		"Follow Source": 3
 	}
 	return docstatus[target_docstatus]
+
+def freeze_on_progress():
+	enqueued_method = (
+		"stream_sync.stream_sync.doctype.stream_update_log.stream_update_log.make_stream_update_log"
+	)
+	jobs = get_jobs()
+	if jobs and enqueued_method in jobs[frappe.local.site]:
+		return freeze_on_progress()
+	return "Success"

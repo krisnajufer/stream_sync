@@ -15,7 +15,26 @@ frappe.ui.form.on("Sync Hub", {
         frm.disable_save();
         frm.get_field('sync_hub_document').grid.cannot_add_rows = true;
 	},
+    ref_doctype(frm){
+        frappe.db.get_value('DocType', frm.doc.ref_doctype, 'is_submittable')
+            .then(r => {
+                const resp = r.message;
+                frm.toggle_display('is_filter', resp.is_submittable)
+            });
+    },
     get_data(frm){
+        if (!frm.doc.ref_doctype) {
+            frappe.msgprint(`Please select Doctype first, then click Get Data`)
+            return
+        }
+        if (frm.doc.is_filter && !frm.doc.from_date && !frm.doc.to_date) {
+            frappe.msgprint(`Please select From Date and To Date to Filter`)
+            return
+        }
+        if (frm.doc.is_filter && frm.doc.from_date > frm.doc.to_date) {
+            frappe.msgprint(`From Date cannot greater than To Date`)
+            return
+        }
         frm.doc.sync_hub_document = []
         frm.refresh_field('sync_hub_document');
         frm.call('get_data').then(r => {
